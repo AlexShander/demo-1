@@ -14,6 +14,15 @@ A Terraform-based AWS infrastructure demo that provisions a multi-environment se
 cd apps
 python app.py
 
+# Run unit tests
+cd apps
+python -m unittest test_app -v
+
+# Run tests with pytest and coverage
+cd apps
+pip install pytest pytest-cov
+pytest test_app.py -v --cov=app --cov-report=term-missing
+
 # Build Docker image locally
 docker build -t incode-demo-1-app:local .
 
@@ -86,6 +95,34 @@ When `app_version` variable changes:
 - **Runner**: `ubuntu-latest` - GitHub-hosted Ubuntu virtual machines
 - **Runtime**: Jobs execute in ephemeral Ubuntu VMs provisioned by GitHub, not in Docker containers or self-hosted runners
 - **Pre-installed tools**: Docker, Git, AWS CLI, standard Linux utilities (jq, bash, etc.)
+
+### Unit Test Pipeline (test.yml)
+- **Trigger**:
+  - Pull requests that modify `apps/**/*.py` or requirements files
+  - Push to `main` that modifies Python code
+  - Manual trigger via `workflow_dispatch`
+- **Execution**: Two parallel testing strategies
+
+#### Job 1: pytest (Matrix Testing)
+- **Python Versions**: 3.9, 3.10, 3.11 (matrix strategy)
+- **Test Runner**: pytest with coverage analysis
+- **Features**:
+  - Code coverage reporting with pytest-cov
+  - Coverage uploaded as artifacts (Python 3.11 only)
+  - PR comments with coverage percentage (via py-cov-action)
+  - HTML coverage reports
+  - Workflow summary with coverage metrics
+- **Test Suite**: 19 unit tests covering:
+  - `/liveness` endpoint (HTTP 200, HTML content, timezone, version display)
+  - `/readiness` endpoint (DB connectivity checks, error handling)
+  - Helper functions (`read_version()`, `check_tcp_connect()`)
+  - Route validation and HTTP method restrictions
+  - Edge cases (missing files, invalid ports, timeouts)
+
+#### Job 2: unittest (Standard Library)
+- **Python Version**: 3.11
+- **Test Runner**: Built-in unittest module (no external dependencies)
+- **Purpose**: Validates tests work with Python's standard testing framework
 
 ### Build Pipeline (build-and-publish.yml)
 - **Trigger**: Push to `main` (skips if commit contains `[skip ci]`)

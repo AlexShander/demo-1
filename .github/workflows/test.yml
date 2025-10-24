@@ -1,0 +1,118 @@
+name: Unit Tests
+
+on:
+  pull_request:
+    paths:
+      - 'apps/**/*.py'
+      - 'apps/requirements*.txt'
+  push:
+    branches: [ main ]
+    paths:
+      - 'apps/**/*.py'
+      - 'apps/requirements*.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  test:
+    name: Run Unit Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11']
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+          cache-dependency-path: 'apps/requirements*.txt'
+
+      - name: 📦 Install dependencies
+        working-directory: apps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov pytest-mock
+
+      - name: 🧪 Run unit tests with pytest
+        working-directory: apps
+        run: |
+          echo "Running unit tests with pytest..."
+          pytest test_app.py -v --tb=short --cov=app --cov-report=term-missing --cov-report=xml --cov-report=html
+
+      - name: 📊 Generate test summary
+        if: always()
+        working-directory: apps
+        run: |
+          if [ -f .coverage ]; then
+            echo "### Test Results Summary" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Python Version**: ${{ matrix.python-version }}" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "#### Coverage Report:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            coverage report >> $GITHUB_STEP_SUMMARY || true
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: 📦 Upload coverage reports
+        if: matrix.python-version == '3.11'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            apps/coverage.xml
+            apps/htmlcov/
+          retention-days: 7
+
+      - name: 💬 Comment PR with coverage
+        if: github.event_name == 'pull_request' && matrix.python-version == '3.11'
+        uses: py-cov-action/python-coverage-comment-action@v3
+        with:
+          GITHUB_TOKEN: ${{ github.token }}
+          MINIMUM_GREEN: 80
+          MINIMUM_ORANGE: 60
+        continue-on-error: true
+
+  test-with-unittest:
+    name: Run Unit Tests (unittest)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: 'apps/requirements*.txt'
+
+      - name: 📦 Install dependencies
+        working-directory: apps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 🧪 Run unit tests with unittest
+        working-directory: apps
+        run: |
+          echo "Running unit tests with unittest..."
+          python -m unittest test_app -v
+
+      - name: ✅ Test Summary
+        if: always()
+        run: |
+          echo "### unittest Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Unit tests completed using Python's built-in unittest framework" >> $GITHUB_STEP_SUMMARY
